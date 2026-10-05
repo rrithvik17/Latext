@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 5s # Set scrape interval to 5 seconds for responsive load testing metrics
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'latext-backend'
+    static_configs:
+      - targets: ['backend:8000']
+
+  - job_name: 'latext-worker'
+    static_configs:
+      - targets: ['worker:8001']
+
+  - job_name: 'latext-scheduler'
+    static_configs:
+      - targets: ['scheduler:8002']

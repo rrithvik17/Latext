@@ -1,0 +1,67 @@
+name: Latext CD Deployment Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target Deployment Environment'
+        required: true
+        default: 'local'
+        type: choice
+        options:
+          - local
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Image (Dry-Run / Tag by SHA)
+        run: |
+          docker build --dry-run -t latext-backend:${{ github.sha }} ./backend
+
+      - name: Build Frontend Image (Dry-Run / Tag by SHA)
+        run: |
+          docker build --dry-run -t latext-frontend:${{ github.sha }} ./frontend
+
+      - name: Configure Kubernetes CLI (kubectl)
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'latest'
+
+      - name: Run Database Migration Job (Dry-Run / Template)
+        run: |
+          echo "Simulating K8s deployment of Database Migration Job using SHA: ${{ github.sha }}..."
+          # In active CI/CD, this applies the k8s migration job manifest:
+          # kubectl apply -f k8s/migration-job.yaml -n latext
+          # kubectl wait --for=condition=complete job/latext-migration-job -n latext --timeout=120s
+
+      - name: Rollout Kubernetes Deployment (Dry-Run / Template)
+        run: |
+          echo "Simulating K8s rolling update for environment: ${{ github.event.inputs.environment }}..."
+          # In active CD, this applies Kustomize overlays and monitors rollout:
+          # kubectl apply -k k8s/ -n latext
+          # kubectl rollout status deployment/backend -n latext --timeout=90s
+
+      - name: Execute Post-Deployment Smoke Tests (Dry-Run / Template)
+        run: |
+          echo "Simulating verification smoke tests..."
+          # In active CD:
+          # python backend/scripts/smoke_test.py --url http://backend.latext.svc.cluster.local:8000
+          
+      - name: Rollback Trigger (On failure simulation template)
+        if: failure()
+        run: |
+          echo "Smoke test failed! Rolling back deployment to previous revision..."
+          # kubectl rollout undo deployment/backend -n latext
+          # kubectl rollout status deployment/backend -n latext

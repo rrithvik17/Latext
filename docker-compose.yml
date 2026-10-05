@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: latext-db
+    command: postgres -c max_connections=300
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-latext}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000-8001:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-latext}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: latext-frontend
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+    depends_on:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    container_name: latext-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python -m app.worker.worker
+    volumes:
+      - ./backend:/app
+    expose:
+      - "8001"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-latext}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - REDIS_URL=redis://redis:6379/0
+      - BACKEND_INTERNAL_URL=http://backend:8000
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-10}
+      - MAX_SCHEDULED_MESSAGE_ATTEMPTS=${MAX_SCHEDULED_MESSAGE_ATTEMPTS:-4}
+      - RETRY_BASE_DELAY_SECONDS=${RETRY_BASE_DELAY_SECONDS:-10}
+      - MAX_RETRY_DELAY_SECONDS=${MAX_RETRY_DELAY_SECONDS:-90}
+      - DATABASE_POOL_SIZE=${DATABASE_POOL_SIZE:-5}
+      - DATABASE_MAX_OVERFLOW=${DATABASE_MAX_OVERFLOW:-10}
+      - WORKER_BATCH_SIZE=${WORKER_BATCH_SIZE:-1}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: latext-scheduler
+    command: python -m app.scheduler.scheduler
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-latext}
+      - REDIS_URL=redis://redis:6379/0
+      - SCHEDULER_POLL_INTERVAL_SECONDS=${SCHEDULER_POLL_INTERVAL_SECONDS:-5}
+      - SCHEDULED_MESSAGE_PROCESSING_TIMEOUT_SECONDS=${SCHEDULED_MESSAGE_PROCESSING_TIMEOUT_SECONDS:-60}
+      - WORKER_URL=http://worker:8001
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: latext-prometheus
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+      - worker
+      - scheduler
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: latext-grafana
+    volumes:
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:

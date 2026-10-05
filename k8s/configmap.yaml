@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: latext-config
+  namespace: latext
+data:
+  PROJECT_NAME: "Latext"
+  SCHEDULER_POLL_INTERVAL_SECONDS: "5"
+  SCHEDULED_MESSAGE_PROCESSING_TIMEOUT_SECONDS: "60"
+  CORS_ORIGINS: '["http://localhost:3000"]'
+  WORKER_CONCURRENCY: "10"
+  MAX_SCHEDULED_MESSAGE_ATTEMPTS: "4"
+  RETRY_BASE_DELAY_SECONDS: "10"
+  MAX_RETRY_DELAY_SECONDS: "90"
+  DATABASE_POOL_SIZE: "5"
+  DATABASE_MAX_OVERFLOW: "10"
+  WORKER_BATCH_SIZE: "1"
+  BENCHMARK_DB_ONLY: "false"
+  REDIS_URL: "redis://redis.latext.svc.cluster.local:6379/0"
+  DATABASE_URL: "postgresql+asyncpg://postgres:postgres@postgres.latext.svc.cluster.local:5432/latext"
+  BACKEND_INTERNAL_URL: "http://backend.latext.svc.cluster.local:8000"
+  WORKER_URL: "http://worker.latext.svc.cluster.local:8001"
