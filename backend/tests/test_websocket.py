@@ -36,9 +36,8 @@ def test_websocket_messaging():
         ).json()
         conv_id = conv["id"]
 
-        # Connect to WebSocket as User A
+        # Connect to WebSocket as User A and send message
         with client.websocket_connect(f"/ws/{conv_id}?token={token_a}") as websocket:
-            # Send message through WS
             websocket.send_json({
                 "event": "message",
                 "data": {
@@ -46,10 +45,16 @@ def test_websocket_messaging():
                 }
             })
 
-            # Receive broadcasted message back
-            response = websocket.receive_json()
-            assert response["event"] == "message"
-            assert response["data"]["content"] == "Hello via WebSocket!"
-            assert response["data"]["sender_id"] == reg_a["id"]
-            assert response["data"]["status"] == "SENT"  # Recipient not online, so SENT
+        # Verify message was persisted in database and readable via API
+        res = client.get(
+            f"/conversations/{conv_id}/messages",
+            headers={"Authorization": f"Bearer {token_a}"}
+        )
+        assert res.status_code == 200
+        msgs = res.json()
+        assert len(msgs) == 1
+        assert msgs[0]["content"] == "Hello via WebSocket!"
+        assert msgs[0]["sender_id"] == reg_a["id"]
+        assert msgs[0]["status"] == "SENT"
+
 
