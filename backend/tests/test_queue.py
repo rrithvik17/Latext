@@ -194,7 +194,7 @@ async def test_dead_letter_queue_routing(db, mock_redis_injection):
     await process_callback(str(sm.id))
 
     # Verify status is FAILED in DB and pushed to DLQ
-    from conftest import TestingSessionLocal
+    from app.core.database import SessionLocal as TestingSessionLocal
     async with TestingSessionLocal() as fresh_db:
         res = await fresh_db.execute(select(ScheduledMessage).where(ScheduledMessage.id == sm.id))
         sm_fresh = res.scalars().first()
@@ -228,7 +228,7 @@ async def test_redis_failure_after_db_commit(db, mock_redis_injection):
     await process_callback(str(sm.id))
 
     # Verify status is FAILED_PENDING_DLQ
-    from conftest import TestingSessionLocal
+    from app.core.database import SessionLocal as TestingSessionLocal
     async with TestingSessionLocal() as fresh_db:
         res = await fresh_db.execute(select(ScheduledMessage).where(ScheduledMessage.id == sm.id))
         sm_fresh = res.scalars().first()
@@ -270,7 +270,7 @@ async def test_duplicate_dlq_publication(db, mock_redis_injection):
     await process_callback(str(sm.id))
 
     # Verify no Message is created in DB
-    from conftest import TestingSessionLocal
+    from app.core.database import SessionLocal as TestingSessionLocal
     async with TestingSessionLocal() as fresh_db:
         res = await fresh_db.execute(select(Message).where(Message.scheduled_message_id == sm.id))
         messages = res.scalars().all()
@@ -313,7 +313,7 @@ async def test_concurrent_failures(db, mock_redis_injection):
     )
 
     # Verify both are FAILED in DB and pushed to DLQ
-    from conftest import TestingSessionLocal
+    from app.core.database import SessionLocal as TestingSessionLocal
     async with TestingSessionLocal() as fresh_db:
         res = await fresh_db.execute(select(ScheduledMessage).where(ScheduledMessage.id.in_([sm1.id, sm2.id])))
         failures = res.scalars().all()

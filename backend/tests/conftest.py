@@ -2,18 +2,19 @@ import asyncio
 import pytest
 import pytest_asyncio
 from typing import AsyncGenerator
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.base import Base
-# Make sure models are imported so metadata knows about them
+# Make sure all models are imported so metadata knows about them
 from app.models.user import User
 from app.models.conversation import Conversation, ConversationParticipant
 from app.models.message import Message
 from app.models.outbox import OutboxEvent
+from app.models.scheduled_message import ScheduledMessage
 from app.main import app
 
 # Use the same configured database URL but clean tables before/after
@@ -66,9 +67,11 @@ async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
             pass
 
     app.dependency_overrides[get_db] = override_get_db
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+
 
 
 class MockPubSub:
