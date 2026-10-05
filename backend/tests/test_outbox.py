@@ -11,11 +11,8 @@ from app.models.scheduled_message import ScheduledMessage
 from app.core.database import SessionLocal
 from sqlalchemy import select, delete
 
-@pytest_asyncio.fixture(autouse=True)
-async def clean_outbox_and_messages(db):
-    await db.execute(delete(OutboxEvent))
-    await db.execute(delete(Message))
-    await db.commit()
+
+
 
 @pytest.mark.asyncio
 async def test_crash_test_1_commit_then_publish(db, mock_redis_injection, create_conversation):

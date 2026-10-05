@@ -53,28 +53,41 @@ async def setup_test_db():
         await conn.run_sync(Base.metadata.drop_all)
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def clean_db_tables():
+    yield
+    # Truncate tables in reverse topological order to respect foreign keys
+    async with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(table.delete())
+
+
 @pytest_asyncio.fixture
 async def db() -> AsyncGenerator[AsyncSession, None]:
     async with TestingSessionLocal() as session:
         yield session
-        # Ensure we rollback any changes made in tests
         await session.rollback()
 
 
-
 @pytest_asyncio.fixture
-async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    async def override_get_db():
-        try:
-            yield db
-        finally:
-            pass
+async def client() -> AsyncGenerator[AsyncClient, None]:
+    async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        async with TestingSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
 
     app.dependency_overrides[app_db.get_db] = override_get_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+
 
 
 
