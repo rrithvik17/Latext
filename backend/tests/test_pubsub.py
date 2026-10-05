@@ -87,11 +87,12 @@ async def test_pubsub_publish(mock_redis_injection):
 
 
 @pytest.mark.asyncio
-async def test_subscriber_message_routing_to_connected_user(db, mock_redis_injection):
+async def test_subscriber_message_routing_to_connected_user(db, mock_redis_injection, create_conversation):
     # Setup database entities
-    conversation_id = uuid.uuid4()
-    recipient_id = uuid.uuid4()
-    sender_id = uuid.uuid4()
+    conv, sender, recipient = await create_conversation()
+    conversation_id = conv.id
+    recipient_id = recipient.id
+    sender_id = sender.id
 
     # Add message
     msg = Message(
@@ -135,6 +136,7 @@ async def test_subscriber_message_routing_to_connected_user(db, mock_redis_injec
 
     # Clean up connection manager
     manager.disconnect(recipient_id, ws)
+
 
 
 @pytest.mark.asyncio

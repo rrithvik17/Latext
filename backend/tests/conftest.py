@@ -73,6 +73,47 @@ async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides.clear()
 
 
+@pytest_asyncio.fixture
+async def create_user(db: AsyncSession):
+    async def _create_user(username: str = None, email: str = None) -> User:
+        import uuid
+        uid = uuid.uuid4()
+        uname = username or f"user_{uid.hex[:8]}"
+        uemail = email or f"user_{uid.hex[:8]}@example.com"
+        user = User(
+            id=uid,
+            username=uname,
+            email=uemail,
+            password_hash="hashedpassword123",
+            display_name=f"Display {uname}"
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return user
+    return _create_user
+
+
+@pytest_asyncio.fixture
+async def create_conversation(db: AsyncSession, create_user):
+    async def _create_conv(user1: User = None, user2: User = None):
+        import uuid
+        u1 = user1 or await create_user()
+        u2 = user2 or await create_user()
+        conv = Conversation(id=uuid.uuid4(), is_group=False)
+        db.add(conv)
+        await db.commit()
+        
+        p1 = ConversationParticipant(conversation_id=conv.id, user_id=u1.id)
+        p2 = ConversationParticipant(conversation_id=conv.id, user_id=u2.id)
+        db.add_all([p1, p2])
+        await db.commit()
+        await db.refresh(conv)
+        return conv, u1, u2
+    return _create_conv
+
+
+
 
 class MockPubSub:
     def __init__(self, mock_redis):

@@ -33,14 +33,15 @@ async def test_job_enqueue_and_pop(mock_redis_injection):
 
 
 @pytest.mark.asyncio
-async def test_scheduler_atomic_enqueue_workflow(db, mock_redis_injection):
+async def test_scheduler_atomic_enqueue_workflow(db, mock_redis_injection, create_conversation):
     mock_r = mock_redis_injection
+    conv, u1, _ = await create_conversation()
     
     # Create due scheduled message
     sm = ScheduledMessage(
         id=uuid.uuid4(),
-        conversation_id=uuid.uuid4(),
-        sender_id=uuid.uuid4(),
+        conversation_id=conv.id,
+        sender_id=u1.id,
         content="Due atomic enqueuing message",
         message_type="TEXT",
         scheduled_at_utc=datetime.now(timezone.utc) - timedelta(minutes=2),
@@ -61,14 +62,15 @@ async def test_scheduler_atomic_enqueue_workflow(db, mock_redis_injection):
 
 
 @pytest.mark.asyncio
-async def test_scheduler_redis_outage_resilience(db, mock_redis_injection):
+async def test_scheduler_redis_outage_resilience(db, mock_redis_injection, create_conversation):
     mock_r = mock_redis_injection
     mock_r.fail_rpush = True  # Simulate Redis outage during push
+    conv, u1, _ = await create_conversation()
 
     sm = ScheduledMessage(
         id=uuid.uuid4(),
-        conversation_id=uuid.uuid4(),
-        sender_id=uuid.uuid4(),
+        conversation_id=conv.id,
+        sender_id=u1.id,
         content="Outage message",
         message_type="TEXT",
         scheduled_at_utc=datetime.now(timezone.utc) - timedelta(minutes=2),
@@ -88,11 +90,12 @@ async def test_scheduler_redis_outage_resilience(db, mock_redis_injection):
 
 
 @pytest.mark.asyncio
-async def test_worker_successful_processing_lifecycles(db):
+async def test_worker_successful_processing_lifecycles(db, create_conversation):
+    conv, u1, _ = await create_conversation()
     sm = ScheduledMessage(
         id=uuid.uuid4(),
-        conversation_id=uuid.uuid4(),
-        sender_id=uuid.uuid4(),
+        conversation_id=conv.id,
+        sender_id=u1.id,
         content="Queue message lifecycle",
         message_type="TEXT",
         scheduled_at_utc=datetime.now(timezone.utc) - timedelta(minutes=2),
@@ -119,8 +122,9 @@ async def test_worker_successful_processing_lifecycles(db):
 
 
 @pytest.mark.asyncio
-async def test_worker_processing_failure_and_retry(db, mock_redis_injection, monkeypatch):
+async def test_worker_processing_failure_and_retry(db, mock_redis_injection, monkeypatch, create_conversation):
     mock_r = mock_redis_injection
+    conv, u1, _ = await create_conversation()
     
     # Mock database flush to raise an exception on the first call (message execution),
     # but succeed on subsequent calls (status/retry logging).
@@ -139,8 +143,8 @@ async def test_worker_processing_failure_and_retry(db, mock_redis_injection, mon
 
     sm = ScheduledMessage(
         id=uuid.uuid4(),
-        conversation_id=uuid.uuid4(),
-        sender_id=uuid.uuid4(),
+        conversation_id=conv.id,
+        sender_id=u1.id,
         content="Failing message",
         message_type="TEXT",
         scheduled_at_utc=datetime.now(timezone.utc) - timedelta(minutes=2),
@@ -172,14 +176,15 @@ def test_retry_delay_calculations():
 
 
 @pytest.mark.asyncio
-async def test_dead_letter_queue_routing(db, mock_redis_injection):
+async def test_dead_letter_queue_routing(db, mock_redis_injection, create_conversation):
     mock_r = mock_redis_injection
+    conv, u1, _ = await create_conversation()
     
     # Message has already hit max attempts (4)
     sm = ScheduledMessage(
         id=uuid.uuid4(),
-        conversation_id=uuid.uuid4(),
-        sender_id=uuid.uuid4(),
+        conversation_id=conv.id,
+        sender_id=u1.id,
         content="Dead letter job",
         message_type="TEXT",
         scheduled_at_utc=datetime.now(timezone.utc) - timedelta(minutes=2),
@@ -204,13 +209,14 @@ async def test_dead_letter_queue_routing(db, mock_redis_injection):
 
 
 @pytest.mark.asyncio
-async def test_redis_failure_after_db_commit(db, mock_redis_injection):
+async def test_redis_failure_after_db_commit(db, mock_redis_injection, create_conversation):
     mock_r = mock_redis_injection
+    conv, u1, _ = await create_conversation()
     # Message at max attempts
     sm = ScheduledMessage(
         id=uuid.uuid4(),
-        conversation_id=uuid.uuid4(),
-        sender_id=uuid.uuid4(),
+        conversation_id=conv.id,
+        sender_id=u1.id,
         content="Failed message",
         message_type="TEXT",
         scheduled_at_utc=datetime.now(timezone.utc) - timedelta(minutes=2),
@@ -249,13 +255,14 @@ async def test_redis_failure_after_db_commit(db, mock_redis_injection):
 
 
 @pytest.mark.asyncio
-async def test_duplicate_dlq_publication(db, mock_redis_injection):
+async def test_duplicate_dlq_publication(db, mock_redis_injection, create_conversation):
     mock_r = mock_redis_injection
+    conv, u1, _ = await create_conversation()
     # Message is already FAILED
     sm = ScheduledMessage(
         id=uuid.uuid4(),
-        conversation_id=uuid.uuid4(),
-        sender_id=uuid.uuid4(),
+        conversation_id=conv.id,
+        sender_id=u1.id,
         content="Idempotent check",
         message_type="TEXT",
         scheduled_at_utc=datetime.now(timezone.utc) - timedelta(minutes=2),
@@ -278,13 +285,14 @@ async def test_duplicate_dlq_publication(db, mock_redis_injection):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_failures(db, mock_redis_injection):
+async def test_concurrent_failures(db, mock_redis_injection, create_conversation):
     mock_r = mock_redis_injection
+    conv, u1, _ = await create_conversation()
     # Create two due messages at max attempts
     sm1 = ScheduledMessage(
         id=uuid.uuid4(),
-        conversation_id=uuid.uuid4(),
-        sender_id=uuid.uuid4(),
+        conversation_id=conv.id,
+        sender_id=u1.id,
         content="Concurrent fail 1",
         message_type="TEXT",
         scheduled_at_utc=datetime.now(timezone.utc) - timedelta(minutes=2),
@@ -294,8 +302,8 @@ async def test_concurrent_failures(db, mock_redis_injection):
     )
     sm2 = ScheduledMessage(
         id=uuid.uuid4(),
-        conversation_id=uuid.uuid4(),
-        sender_id=uuid.uuid4(),
+        conversation_id=conv.id,
+        sender_id=u1.id,
         content="Concurrent fail 2",
         message_type="TEXT",
         scheduled_at_utc=datetime.now(timezone.utc) - timedelta(minutes=2),
@@ -321,6 +329,7 @@ async def test_concurrent_failures(db, mock_redis_injection):
         for f in failures:
             assert f.status == "FAILED"
     assert len(mock_r.lists["latext:scheduled:dead-letter"]) == 2
+
 
 
 def test_connection_budget():

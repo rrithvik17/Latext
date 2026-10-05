@@ -18,7 +18,7 @@ async def clean_outbox_and_messages(db):
     await db.commit()
 
 @pytest.mark.asyncio
-async def test_crash_test_1_commit_then_publish(db, mock_redis_injection):
+async def test_crash_test_1_commit_then_publish(db, mock_redis_injection, create_conversation):
     """
     Crash Test 1:
     1. Begin message transaction.
@@ -27,14 +27,14 @@ async def test_crash_test_1_commit_then_publish(db, mock_redis_injection):
     4. Verify publisher eventually publishes the event.
     """
     mock_r = mock_redis_injection
+    conv, u1, _ = await create_conversation()
     msg_id = uuid.uuid4()
-    conv_id = uuid.uuid4()
     
     # 1. Begin transaction, insert message & outbox
     db_msg = Message(
         id=msg_id,
-        conversation_id=conv_id,
-        sender_id=uuid.uuid4(),
+        conversation_id=conv.id,
+        sender_id=u1.id,
         content="Crash Test 1 Content",
         message_type="TEXT",
         status="SENT"
@@ -72,6 +72,7 @@ async def test_crash_test_1_commit_then_publish(db, mock_redis_injection):
     assert len(mock_r.event_queue) == 1
     await db.refresh(db_outbox)
     assert db_outbox.published_at is not None
+
 
 
 @pytest.mark.asyncio
@@ -115,21 +116,22 @@ async def test_crash_test_2_duplicate_pub_safety(db, mock_redis_injection):
 
 
 @pytest.mark.asyncio
-async def test_crash_test_3_crash_before_commit(db):
+async def test_crash_test_3_crash_before_commit(db, create_conversation):
     """
     Crash Test 3:
     1. Message transaction starts.
     2. Message inserted.
     3. Process crashes before commit (rollback simulated).
     """
+    conv, u1, _ = await create_conversation()
     msg_id = uuid.uuid4()
     
     async with SessionLocal() as local_db:
         # Simulate uncommitted inserts
         db_msg = Message(
             id=msg_id,
-            conversation_id=uuid.uuid4(),
-            sender_id=uuid.uuid4(),
+            conversation_id=conv.id,
+            sender_id=u1.id,
             content="Crash Test 3 Content",
             status="SENT"
         )
@@ -143,20 +145,21 @@ async def test_crash_test_3_crash_before_commit(db):
 
 
 @pytest.mark.asyncio
-async def test_crash_test_4_rollback_safety(db):
+async def test_crash_test_4_rollback_safety(db, create_conversation):
     """
     Crash Test 4:
     1. Message & Outbox inserted.
     2. Transaction explicitly rolled back.
     """
+    conv, u1, _ = await create_conversation()
     msg_id = uuid.uuid4()
     
     async with SessionLocal() as local_db:
         async with local_db.begin():
             db_msg = Message(
                 id=msg_id,
-                conversation_id=uuid.uuid4(),
-                sender_id=uuid.uuid4(),
+                conversation_id=conv.id,
+                sender_id=u1.id,
                 content="Rollback Content",
                 status="SENT"
             )
@@ -179,6 +182,7 @@ async def test_crash_test_4_rollback_safety(db):
     outbox_db = (await db.execute(select(OutboxEvent).where(OutboxEvent.aggregate_id == str(msg_id)))).scalars().first()
     assert msg_db is None
     assert outbox_db is None
+
 
 
 @pytest.mark.asyncio
