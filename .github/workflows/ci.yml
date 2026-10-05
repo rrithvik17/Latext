@@ -58,9 +58,11 @@ jobs:
           JWT_ALGORITHM: HS256
           ACCESS_TOKEN_EXPIRE_MINUTES: 1440
           PYTHONPATH: backend
+          TESTING: "true"
         run: |
           cd backend
-          pytest
+          pytest -v
+
 
   frontend-build:
     runs-on: ubuntu-latest

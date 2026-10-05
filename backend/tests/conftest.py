@@ -1,13 +1,17 @@
+import os
 import asyncio
 import pytest
 import pytest_asyncio
 from typing import AsyncGenerator
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
+
+# Set TESTING environment variable before importing any application modules
+os.environ["TESTING"] = "true"
 
 from app.core.config import settings
-from app.core.database import get_db
+import app.core.database as app_db
 from app.models.base import Base
 # Make sure all models are imported so metadata knows about them
 from app.models.user import User
@@ -17,10 +21,12 @@ from app.models.outbox import OutboxEvent
 from app.models.scheduled_message import ScheduledMessage
 from app.main import app
 
-# Use the same configured database URL but clean tables before/after
+# Use NullPool for PostgreSQL in tests to avoid event-loop connection sharing conflicts in asyncpg
+pool_cls = StaticPool if "sqlite" in settings.DATABASE_URL else NullPool
+
 engine = create_async_engine(
     settings.DATABASE_URL,
-    poolclass=StaticPool,
+    poolclass=pool_cls,
 )
 
 TestingSessionLocal = async_sessionmaker(
@@ -31,12 +37,9 @@ TestingSessionLocal = async_sessionmaker(
     autoflush=False
 )
 
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Patch app.core.database so background workers and endpoints share the test session factory
+app_db.engine = engine
+app_db.SessionLocal = TestingSessionLocal
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
@@ -58,6 +61,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
         await session.rollback()
 
 
+
 @pytest_asyncio.fixture
 async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     async def override_get_db():
@@ -66,11 +70,12 @@ async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         finally:
             pass
 
-    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[app_db.get_db] = override_get_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+
 
 
 @pytest_asyncio.fixture

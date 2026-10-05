@@ -15,19 +15,31 @@ from app.events.outbox_publisher import start_outbox_publisher, start_outbox_cle
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Launch background subscriber, publisher, and cleanup loops
-    sub_task = asyncio.create_task(start_subscriber())
-    pub_task = asyncio.create_task(start_outbox_publisher())
-    clean_task = asyncio.create_task(start_outbox_cleanup_daemon())
+    import os
+    is_testing = os.getenv("TESTING", "false").lower() == "true"
+    sub_task = None
+    pub_task = None
+    clean_task = None
+
+    if not is_testing:
+        # Launch background subscriber, publisher, and cleanup loops
+        sub_task = asyncio.create_task(start_subscriber())
+        pub_task = asyncio.create_task(start_outbox_publisher())
+        clean_task = asyncio.create_task(start_outbox_cleanup_daemon())
     yield
     # Shutdown
-    sub_task.cancel()
-    pub_task.cancel()
-    clean_task.cancel()
-    try:
-        await asyncio.gather(sub_task, pub_task, clean_task, return_exceptions=True)
-    except Exception:
-        pass
+    if not is_testing:
+        if sub_task:
+            sub_task.cancel()
+        if pub_task:
+            pub_task.cancel()
+        if clean_task:
+            clean_task.cancel()
+        try:
+            await asyncio.gather(sub_task, pub_task, clean_task, return_exceptions=True)
+        except Exception:
+            pass
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
