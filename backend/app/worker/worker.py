@@ -583,20 +583,26 @@ async def lifespan(app: FastAPI):
 
     # Launch background consumer task
     import os
-    batch_size = int(os.getenv("WORKER_BATCH_SIZE", "1"))
-    if batch_size > 1:
-        task = asyncio.create_task(start_consumer(process_callback, process_batch_callback=process_batch_callback))
-    else:
-        task = asyncio.create_task(start_consumer(process_callback))
+    is_testing = os.getenv("TESTING", "false").lower() == "true"
+    task = None
+    if not is_testing:
+        batch_size = int(os.getenv("WORKER_BATCH_SIZE", "1"))
+        if batch_size > 1:
+            task = asyncio.create_task(start_consumer(process_callback, process_batch_callback=process_batch_callback))
+        else:
+            task = asyncio.create_task(start_consumer(process_callback))
     yield
     # Shutdown
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     # Close shared HTTP connection pool
-    await http_client.aclose()
+    if http_client:
+        await http_client.aclose()
+
 
 
 app = FastAPI(

@@ -257,15 +257,20 @@ async def scheduler_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start loop background task
-    task = asyncio.create_task(scheduler_loop())
+    import os
+    is_testing = os.getenv("TESTING", "false").lower() == "true"
+    task = None
+    if not is_testing:
+        task = asyncio.create_task(scheduler_loop())
     yield
     # Shutdown
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
 
 
 app = FastAPI(
